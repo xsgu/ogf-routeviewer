@@ -1,0 +1,154 @@
+<html>
+<head>
+<title>Route relations</title>
+
+<!-- modified by Subway from the original by thilo -->
+<!-- last updated August 20 2017 -->
+
+<link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet/v1.0.3/leaflet.css" />
+<script src="http://cdn.leafletjs.com/leaflet/v1.0.3/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/lodash/4.17.4/lodash.min.js" type="text/javascript"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.4.3/proj4.js"></script>
+
+<script src="http://tile.opengeofiction.net/util/OGFUtil.js"></script>
+
+<style>
+
+ul.ogf-menu {
+   list-style-type: none;
+   margin:  0px;
+   padding: 0px;
+}
+
+.ogf-menu li {
+    margin:  0px;
+    padding: 5px;
+}
+
+.ogf-menu li:hover {
+    background-color: #CCEEFF;
+    padding: 5px;
+}
+
+table {
+    font-size: 9pt;
+}
+
+</style>
+
+
+<script type="text/javascript">
+
+var OGF = OGFUtil();
+var mapOptions = {};
+var rlat = 90, rlon = 360;
+var worldPolygon	= [ [-rlat,-rlon], [-rlat,rlon], [rlat,rlon], [rlat,-rlon] ];
+
+
+var hParam = OGF.parseUrlParam( document.URL );
+var hRoutes = {};
+
+var relList = hParam.r.split(/,/);
+_.forEach( relList, function(x){
+        hRoutes[x] = '';
+} );
+console.log( "hRoutes = " + JSON.stringify(hRoutes,null,"  ") );  // _DEBUG_
+
+function loadMap(){
+    map = L.map( 'map', mapOptions ).setView([0, 90], 3);
+    var ogfMap = OGF.map( map, {layers: 'Standard,TopoMap,Histor,Roantra'} );
+
+//  var hParam = OGF.setUrlLocation( map, null, {fields: ['r']} );
+//  if( hParam.q )  QUERY_STR = hParam.q;
+    var hInfo = {bbox: null};
+
+	loadRouteData( hRoutes, function(ctx){
+        _.forEach( _.keys(hRoutes), function(relId){
+            var rel = ctx.relation[relId];
+            drawRouteMaster( rel, ctx, hInfo );
+        } );
+
+        map.fitBounds( [[hInfo.bbox[1], hInfo.bbox[0]], [hInfo.bbox[3], hInfo.bbox[2]]] ); 
+    } );
+}
+
+function drawRouteMaster( rel, ctx, hInfo ){
+	var routes   = _.filter( rel.members, function(x){ return x.type === 'relation'; } );
+	hInfo.color  = rel.tags.colour || rel.tags.color || '#000000';
+    hInfo.text   = objText(rel);
+	if (routes.length > 0){
+    // var stations = _.filter( rel.members, function(x){ return x.type === 'node'      && (x.role === 'station' || x.role === 'stop' || x.role === 'forward:stop' || x.role === 'backward:stop'); } );
+
+    _.forEach( routes, function(mR){
+        drawRoute( ctx.relation[mR.ref], ctx, hInfo );
+    } );
+	_.forEach( routes, function(mR){
+		drawStations( ctx.relation[mR.ref], ctx, hInfo );
+	} );
+    //_.forEach( stations, function(mS){
+    //    var node = ctx.node[mS.ref];
+    //    var popupText = objText(node);
+    //    L.circleMarker( [node.lat, node.lon], {radius: 5, color: hInfo.color, weight: 2, fillColor: '#FFFFFF', fillOpacity: 1} ).addTo( map ).bindPopup( popupText );
+    //} );
+	} else {
+	drawRoute( rel, ctx, hInfo );
+	drawStations( rel, ctx, hInfo );
+	}
+}
+
+function drawRoute( rel, ctx, hInfo ){
+    var closedWays = OGF.buildWaySequence( ctx, rel.id, null, {role: '^.*$', copy: true} );
+    _.forEach( closedWays, function(way){
+//      console.log( "way = " + JSON.stringify(way,null,"  ") );  // _DEBUG_
+        var line = OGF.wayPoints( way, ctx );
+        var hGeo = OGF.wayGeometry( line );
+        hInfo.bbox = OGF.rectUnion( hInfo.bbox, hGeo.bbox );
+
+//      var popupText = 'Way <a href="' + OGF.config.API_URL + 'way/' + way.id + '">' + way.id + '</a>';
+        var popupText = hInfo.text || objText(rel);
+		var color = hInfo.color || hRoutes[rel.id] || '#000000';
+        // var color = hInfo.color || hRoutes[rel.id];
+        L.polyline( line, {color: color, weight: 5} ).addTo( map ).bindPopup( popupText );
+    } );
+}
+
+function drawStations( rel, ctx, hInfo) {
+	var stations = _.filter( rel.members, function(x){ return x.type === 'node'     && (x.role === 'station' || x.role === 'stop' || x.role === 'forward:stop' || x.role === 'backward:stop'); } );
+	var color = hInfo.color || hRoutes[rel.id] || '#000000';
+    _.forEach( stations, function(mS){
+        var node = ctx.node[mS.ref];
+        var popupText = objText(node);
+        L.circleMarker( [node.lat, node.lon], {radius: 5, color: color, weight: 2, fillColor: '#FFFFFF', fillOpacity: 1} ).addTo( map ).bindPopup( popupText );
+    } );	
+}
+
+function loadRouteData( hInfo, cb ){
+//  query = 'relation["route"="railway"]["name"~"FFBN Tren Suburbano"]; (._;>;);';
+    query = _.map( _.keys(hInfo), function(x){ return 'relation('+x+')'; } ).join(';');
+    query = '(' + query + '); (._;>>;);';
+    console.log( "query <" + query + ">" );  // _DEBUG_
+
+    OGF.getOverpassData( query, function(ctx){
+        ctx = OGF.typeMap( ctx );
+//      console.log( "ctx = " + JSON.stringify(ctx,null,"  ") );  // _DEBUG_
+        cb( ctx );
+    } );
+}
+
+function objText( obj ){
+    var typeText = obj.type.substr(0,1).toUpperCase() + obj.type.substr(1); 
+    var objText = '<b>' + obj.tags.name + '</b>';
+    objText += '<br>' + typeText + ' <a href="' + OGF.config.API_URL + obj.type + '/' + obj.id + '">' + obj.id + '</a>';
+    return objText;
+}
+
+
+</script>
+
+</head>
+<body style="margin:0px;" onload="loadMap()">
+
+<div id="map" style="width:100%;height:100%;"></div>
+
+</body>
+</html>
