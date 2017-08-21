@@ -65,33 +65,38 @@ function loadMap(){
 	loadRouteData( hRoutes, function(ctx){
         _.forEach( _.keys(hRoutes), function(relId){
             var rel = ctx.relation[relId];
-            drawRouteMaster( rel, ctx, hInfo );
+            drawRouteMasterLines( rel, ctx, hInfo );
+        } );
+		_.forEach( _.keys(hRoutes), function(relId){
+            var rel = ctx.relation[relId];
+            drawRouteMasterStations( rel, ctx, hInfo );
         } );
 
         map.fitBounds( [[hInfo.bbox[1], hInfo.bbox[0]], [hInfo.bbox[3], hInfo.bbox[2]]] ); 
     } );
 }
 
-function drawRouteMaster( rel, ctx, hInfo ){
-	var routes   = _.filter( rel.members, function(x){ return x.type === 'relation'; } );
+function drawRouteMasterLines( rel, ctx, hInfo ){
+	var routes   = _.filter( rel.members, function(x){ return x.type === 'relation' && (x.role === '' || x.role === 'route'); } );
 	hInfo.color  = rel.tags.colour || rel.tags.color || '#000000';
-    hInfo.text   = objText(rel);
 	if (routes.length > 0){
-    // var stations = _.filter( rel.members, function(x){ return x.type === 'node'      && (x.role === 'station' || x.role === 'stop' || x.role === 'forward:stop' || x.role === 'backward:stop'); } );
-
     _.forEach( routes, function(mR){
         drawRoute( ctx.relation[mR.ref], ctx, hInfo );
     } );
+
+	} else {
+	drawRoute( rel, ctx, hInfo );
+	}
+}
+
+function drawRouteMasterStations( rel, ctx, hInfo ){
+	var routes   = _.filter( rel.members, function(x){ return x.type === 'relation' && (x.role === '' || x.role === 'route'); } );
+	hInfo.color  = rel.tags.colour || rel.tags.color || '#000000';
+	if (routes.length > 0){
 	_.forEach( routes, function(mR){
 		drawStations( ctx.relation[mR.ref], ctx, hInfo );
 	} );
-    //_.forEach( stations, function(mS){
-    //    var node = ctx.node[mS.ref];
-    //    var popupText = objText(node);
-    //    L.circleMarker( [node.lat, node.lon], {radius: 5, color: hInfo.color, weight: 2, fillColor: '#FFFFFF', fillOpacity: 1} ).addTo( map ).bindPopup( popupText );
-    //} );
 	} else {
-	drawRoute( rel, ctx, hInfo );
 	drawStations( rel, ctx, hInfo );
 	}
 }
@@ -105,7 +110,7 @@ function drawRoute( rel, ctx, hInfo ){
         hInfo.bbox = OGF.rectUnion( hInfo.bbox, hGeo.bbox );
 
 //      var popupText = 'Way <a href="' + OGF.config.API_URL + 'way/' + way.id + '">' + way.id + '</a>';
-        var popupText = hInfo.text || objText(rel);
+        var popupText = objText(rel);
 		var color = hInfo.color || hRoutes[rel.id] || '#000000';
         // var color = hInfo.color || hRoutes[rel.id];
         L.polyline( line, {color: color, weight: 5} ).addTo( map ).bindPopup( popupText );
@@ -117,7 +122,8 @@ function drawStations( rel, ctx, hInfo) {
 	var color = hInfo.color || hRoutes[rel.id] || '#000000';
     _.forEach( stations, function(mS){
         var node = ctx.node[mS.ref];
-        var popupText = objText(node);
+		var popupText = objText(node, rel);
+        //var popupText = objTextStation(node, rel);
         L.circleMarker( [node.lat, node.lon], {radius: 5, color: color, weight: 2, fillColor: '#FFFFFF', fillOpacity: 1} ).addTo( map ).bindPopup( popupText );
     } );	
 }
@@ -141,6 +147,14 @@ function objText( obj ){
     objText += '<br>' + typeText + ' <a href="' + OGF.config.API_URL + obj.type + '/' + obj.id + '">' + obj.id + '</a>';
     return objText;
 }
+
+//function objTextStation( obj, rel ){
+//    var typeText = obj.type.substr(0,1).toUpperCase() + obj.type.substr(1); 
+//    var objText = '<b>' + obj.tags.name + '</b>';
+//    objText += '<br>' + typeText + ' <a href="' + OGF.config.API_URL + obj.type + '/' + obj.id + '">' + obj.id + '</a>';
+//	objText += '<br>' + 'Route: ' + rel.tags.name + ' (<a href="' + OGF.config.API_URL + rel.type + '/' + rel.id + '">' + rel.id + '</a>)';
+//    return objText;
+//}
 
 
 </script>
